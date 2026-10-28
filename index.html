@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Midterm Examination — Applied Econometrics</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
+<style>
+:root{--blue:#004A98;--gold:#D6A900;--border:#D9DEE7}*{box-sizing:border-box}body{margin:0;background:#F4F6F9;color:#303640;font:15px/1.55 Arial,sans-serif}header{background:var(--blue);color:white;border-bottom:5px solid var(--gold);padding:25px max(22px,calc((100vw - 1000px)/2))}h1{margin:5px 0;font-size:27px}main{max-width:1000px;margin:26px auto;padding:0 20px}.card{background:white;border:1px solid var(--border);border-radius:9px;padding:22px;margin-bottom:20px;box-shadow:0 2px 8px #00000008}h2{color:var(--blue);font-size:20px;margin-top:0}input{font-size:15px;padding:10px;border:1px solid #aab7c5;border-radius:5px;width:250px;max-width:100%}textarea{display:block;width:100%;min-height:480px;font:14px/1.5 Consolas,monospace;padding:14px;border:1px solid #c8d1df;border-radius:6px;resize:vertical;background:#f8fafc}button{background:var(--blue);color:white;border:0;border-radius:5px;padding:11px 18px;font-weight:bold;cursor:pointer;margin:12px 8px 0 0}button:disabled{opacity:.5;cursor:not-allowed}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f8fa;border-left:4px solid var(--blue);padding:13px;min-height:40px}#assignment{background:#eef4fb;border-left:4px solid var(--gold);padding:13px;margin:14px 0;font-weight:bold}#status{font-size:13px;opacity:.9}#submission{font-weight:bold;margin-top:12px}.plot{max-width:100%;display:block;margin-top:10px}small{color:#666}#workspace{display:none}</style></head><body>
+<header><div id="course"></div><h1 id="title"></h1><div id="subtitle"></div><div id="status">Loading Python environment…</div></header>
+<main><section class="card"><h2>Student identification</h2><label for="studentId">Comillas Student ID</label><br><input id="studentId" type="text" inputmode="numeric" placeholder="6–12 digits"><button id="loadBtn" disabled>Load my examination</button><div id="idMessage"></div><small>Your ID determines your dataset and task. Use the same ID for all attempts.</small></section>
+<div id="workspace"><section class="card"><h2>Examination instructions</h2><div id="instructions"></div><div id="assignment"></div></section>
+<section class="card"><h2>Your Python code</h2><textarea id="editor" spellcheck="false"></textarea><button id="runBtn">Run Code</button><div><strong>Output</strong><pre id="output">Ready.</pre><div id="plots"></div></div></section>
+<section class="card"><h2>Submit examination</h2><p>Submit your code when ready. You may submit again; only your last successfully submitted attempt counts. No grade or grading feedback will be displayed.</p><button id="submitBtn">Submit Attempt</button><div id="submission" role="status"></div></section></div>
+</main><script>
+const EXAM={"exam_id": "midterm_2026", "exam_seed": "FE-MID-2026-FRIDAY-202201340", "course": "Financial Econometrics", "title": "Midterm Examination — Applied Econometrics", "subtitle": "Part II · Open-book · Individual time series", "n_obs": 600, "train_size": 570, "forecast_horizon": 30, "rolling_window": 400, "instructions": "\n<p>This is an individual open-book examination. You may consult course materials, the internet and AI tools. Your monthly time series is provided automatically as a DataFrame named <code>data<\/code>, with a column <code>Index<\/code>. Work with your assigned dataset only.<\/p>\n<p><strong>1. Stationarity.<\/strong> Ensure stationarity of your time series. Explain and justify your econometric decisions.<\/p>\n<p><strong>2. Box–Jenkins.<\/strong> Follow the Box–Jenkins methodology to identify, estimate and diagnose an appropriate ARMA(p,q) model. You may use <strong>OLS for pure AR models<\/strong>. For models containing MA terms, you must <strong>write your own Gaussian log-likelihood function and optimize it numerically<\/strong>. Do not use built-in ARMA/ARIMA fitting routines.<\/p>\n<p><strong>Submission.<\/strong> You can run your code as often as you need. Submit your complete code. Multiple submissions are allowed for technical reasons, but <strong>only the last successfully submitted attempt will be evaluated<\/strong>. No marks or grading feedback are provided during the examination.<\/p>\n", "task_instructions": {"Recursive forecasting": "<strong>3. Recursive forecasting.<\/strong> Use the first <strong>570 observations<\/strong> for initial estimation. Produce <strong>30 one-step-ahead forecasts<\/strong> for the final 30 observations, recursively expanding the estimation sample. Evaluate forecasts using MSE, MAE and RMSE."}, "starter_code": "import numpy as np\nimport pandas as pd\nfrom scipy.optimize import minimize\nimport matplotlib.pyplot as plt\n\n# 'data' is preloaded for your Student ID.\n# Inspect the series and perform your econometric analysis below.\nprint(data.head())\n"};
+const SUBMIT_URL='https://script.google.com/macros/s/AKfycbyVgCDZdg9wulWgk4ihH4Hm0bdl-gq6bYC4A8x9RZ-hc7O6NrlhYxIO4bmZeBUZo8SUDg/exec';
+const $=id=>document.getElementById(id);
+$('course').textContent=EXAM.course;$('title').textContent=EXAM.title;$('subtitle').textContent=EXAM.subtitle||'';$('instructions').innerHTML=EXAM.instructions;
+let pyodide=null, ready=false, currentId=null, currentTask=null, currentDgp=null, busy=false;
+// Stable 32-bit string hash, deterministic across reloads and browsers.
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),16777619)}return h>>>0}
+function rng(seed){let s=seed>>>0;return ()=>{s=(s+0x6D2B79F5)>>>0;let t=s;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296}}
+function normals(seed,n){const u=rng(seed),out=[];while(out.length<n){let a=Math.max(u(),1e-12),b=u(),r=Math.sqrt(-2*Math.log(a));out.push(r*Math.cos(2*Math.PI*b));if(out.length<n)out.push(r*Math.sin(2*Math.PI*b))}return out}
+function generateSeries(id){
+  // Friday-only exam: one student, one DGP, one task.
+  if(id!=='202201340') throw Error('This examination is assigned to Student ID 202201340 only.');
+  const variant=2; // MA(1)
+  const task='Recursive forecasting';
+  const u=rng(hash('friday-coefficients:FE-MID-2026-FRIDAY-202201340:'+id));
+  const theta=.35+(.78-.35)*u();
+  const z=normals(hash('series:FE-MID-2026-FRIDAY-202201340:'+id),900);
+  const x=[];
+  let level=100,previousError=0;
+  for(let t=0;t<z.length;t++){
+    const shock=z[t];
+    x.push(shock+theta*previousError);
+    previousError=shock;
+  }
+  const levels=[];
+  for(const change of x.slice(300)){
+    level+=change;
+    levels.push(Number(level.toFixed(6)));
+  }
+  return {levels,task,variant};
+}
+async function init(){try{pyodide=await loadPyodide();await pyodide.loadPackage(['numpy','pandas','scipy','matplotlib','statsmodels']);ready=true;$('status').textContent='✓ Python ready';$('loadBtn').disabled=false}catch(e){$('status').textContent='Python initialization failed: '+e}}
+async function setupPython(){
+  // Data is injected into the execution namespace, not the editable code.
+  const series=generateSeries(currentId);
+  pyodide.globals.set('_exam_values_json',JSON.stringify(series.levels));
+  await pyodide.runPythonAsync(`import json as _exam_json\nimport numpy as np\nimport pandas as pd\n_exam_values = _exam_json.loads(_exam_values_json)\ndata = pd.DataFrame({'Index': _exam_values}, index=pd.date_range('2000-01-01',periods=len(_exam_values),freq='MS'))\ndata.index.name = 'Date'\ndel _exam_values`);
+}
+$('loadBtn').onclick=()=>{
+  const id=$('studentId').value.trim();if(!/^\d{6,12}$/.test(id)){$('idMessage').textContent='Please enter a valid Student ID (6–12 digits).';return}
+  if(id!=='202201340'){$('idMessage').textContent='This examination is assigned to Student ID 202201340 only.';return}
+  if(currentId&&currentId!==id&&!confirm('Changing Student ID replaces your current code. Continue?'))return;
+  const series=generateSeries(id);currentId=id;currentTask=series.task;currentDgp=series.variant;
+  $('idMessage').textContent='Individual examination loaded for Student ID '+id;
+  $('studentId').disabled=true;$('loadBtn').disabled=true;
+  $('assignment').innerHTML=EXAM.task_instructions[currentTask]||('3. '+currentTask);
+  $('editor').value=EXAM.starter_code;$('workspace').style.display='block';
+};
+async function run(){if(!ready||!currentId||busy)return;busy=true;$('runBtn').disabled=true;$('submitBtn').disabled=true;$('output').textContent='Running…';$('plots').replaceChildren();
+  let captured='';try{
+    await setupPython();
+    await pyodide.runPythonAsync(`import matplotlib as _exam_mpl
+_exam_mpl.use('Agg', force=True)
+import matplotlib.pyplot as _exam_plt
+_exam_plt.close('all')
+# The HTML captures open figures and renders them inside Output.
+# Suppress Pyodide's automatic DOM display when student code calls plt.show().
+_exam_plt.show = lambda *args, **kwargs: None`);
+    pyodide.setStdout({batched:s=>captured+=s+'\n'});pyodide.setStderr({batched:s=>captured+=s+'\n'});
+    await pyodide.runPythonAsync($('editor').value);
+    $('output').textContent='✓ Code executed successfully.\n'+(captured||'No output printed.');
+    const result=await pyodide.runPythonAsync(`import io as _io,base64 as _b64,json as _js\nimport matplotlib.pyplot as _plt\n_images=[]\nfor _n in _plt.get_fignums():\n _buf=_io.BytesIO();_plt.figure(_n).savefig(_buf,format='png',bbox_inches='tight',dpi=100);_images.append(_b64.b64encode(_buf.getvalue()).decode('ascii'))\n_plt.close('all')\n_js.dumps(_images)`);
+    for(const png of JSON.parse(result)){const im=document.createElement('img');im.className='plot';im.src='data:image/png;base64,'+png;$('plots').appendChild(im)}
+  }catch(e){$('output').textContent='Python error:\n'+e+'\n'+captured}finally{busy=false;$('runBtn').disabled=false;$('submitBtn').disabled=false}
+}
+$('runBtn').onclick=run;
+$('submitBtn').onclick=async()=>{
+  if(!currentId||busy)return;busy=true;$('submitBtn').disabled=true;$('runBtn').disabled=true;$('submission').textContent='Submitting…';
+  const code=$('editor').value;
+  const payload={student_id:currentId,practice_id:EXAM.exam_id,practice:EXAM.title,score:0,max_score:0,questions:{q1:{title:'Applied econometrics examination',score:0,max_score:0,code,tests:null,assignment:currentTask,dataset_variant:currentDgp,series_seed:hash('series:FE-MID-2026-FRIDAY-202201340:'+currentId),train_size:EXAM.train_size,forecast_horizon:EXAM.forecast_horizon,rolling_window:EXAM.rolling_window}}};
+  try{const response=await fetch(SUBMIT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});const result=await response.json();if(!result.success)throw Error(result.error||'Server rejected submission');$('submission').textContent='✓ Attempt '+result.attempt+' submitted successfully. Only your last submitted attempt will be evaluated.'}catch(e){$('submission').textContent='✗ Submission not confirmed: '+e+'. Please try again.'}finally{busy=false;$('submitBtn').disabled=false;$('runBtn').disabled=false}
+};
+// Tab inserts four spaces into the editor.
+$('editor').addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const a=e.target,s=a.selectionStart,t=a.selectionEnd;a.setRangeText('    ',s,t,'end')}});
+init();
+</script></body></html>
